@@ -1,4 +1,4 @@
-import { App } from './app.js'; // App sınıfını içe aktar
+import { App } from './app.js'; 
 
 // Uygulamayı başlat
 const app = new App();
