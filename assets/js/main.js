@@ -1,3 +1,8 @@
 'use strict';
-let userLang = navigator.language || navigator.userLanguage;
-document.getElementById("html").setAttribute("lang",userLang);
+
+import App from './app';
+
+
+
+
+const app = new App();
