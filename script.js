@@ -1,5 +1,6 @@
 'use strict';
 
+
 class Workout {
   date = new Date();
   id = (Date.now() + '').slice(-10);
@@ -12,8 +13,23 @@ class Workout {
   }
 
   _setDescription() {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    this.description = `${this.type[0].toUpperCase()}${this.type.slice(1)} on ${months[this.date.getMonth()]} ${this.date.getDate()}`;
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    this.description = `${this.type[0].toUpperCase()}${this.type.slice(1)} on ${
+      months[this.date.getMonth()]
+    } ${this.date.getDate()}`;
   }
 
   click() {
@@ -64,13 +80,20 @@ const inputElevation = document.querySelector('.form__input--elevation');
 const deleteAllBtn = document.querySelector('.delete__all');
 const sortBy = document.querySelector('#sort-by');
 const showBy = document.querySelector('#show-by');
+const overviewBtn = document.querySelector('.overview');
+const overlay = document.querySelector('.overlay');
+const warning = document.querySelector('.warning');
 
 class App {
   #map;
   #mapZoomLevel = 13;
   #mapEvent;
   #workouts = [];
-  #markers = new Map(); // Harita işaretlerini saklamak için eklenen özellik
+  #markers = new Map();
+  #userMarker; 
+  #blinkInterval;
+  #routingControl;
+  
 
   constructor() {
     this._getPosition();
@@ -81,29 +104,38 @@ class App {
     deleteAllBtn.addEventListener('click', this._deleteAllWorkouts.bind(this));
     sortBy.addEventListener('change', this._sortWorkouts.bind(this));
     showBy.addEventListener('change', this._showWorkouts.bind(this));
-    
-    this._showTools();
+    overviewBtn.addEventListener('click', this._showOverview.bind(this));
 
-    
+    this._showTools();
   }
 
+  _showOverview() {
+    if (!this.#map || this.#workouts.length === 0) return;
+
+    const group = new L.featureGroup(Array.from(this.#markers.values()));
+    this.#map.fitBounds(group.getBounds(), {
+      padding: [50, 50], // Padding ekleyin: [top-bottom, left-right] değerleri
+      maxZoom: this.#mapZoomLevel - 1, // Maksimum zoom seviyesini ayarlayın (isteğe bağlı)
+    });
+  }
   _showWorkouts() {
     const selectedType = showBy.value;
-    const filteredWorkouts = selectedType === 'all'
-    ? this.#workouts
-    : this.#workouts.filter(workout => workout.type === selectedType);
+    const filteredWorkouts =
+      selectedType === 'all'
+        ? this.#workouts
+        : this.#workouts.filter(workout => workout.type === selectedType);
     this.#markers.forEach(marker => marker.remove());
-    document.querySelectorAll('.workout').forEach(workoutEl => workoutEl.remove());
+    document
+      .querySelectorAll('.workout')
+      .forEach(workoutEl => workoutEl.remove());
 
     filteredWorkouts.forEach(workout => {
       this._renderWorkoutMarker(workout);
       this._renderWorkout(workout);
     });
-  
+
     this._showTools();
   }
-  
-  
 
   _sortWorkouts(event) {
     const sortByValue = sortBy.value.toLowerCase();
@@ -114,42 +146,60 @@ class App {
         return 0;
       } else if (sortByValue === 'distance') {
         return b.distance - a.distance;
-      } else if(sortByValue === 'distance-negative'){
+      } else if (sortByValue === 'distance-negative') {
         return a.distance - b.distance;
       } else if (sortByValue === 'duration') {
         return b.duration - a.duration;
-      } else if(sortByValue === 'duration-negative'){
+      } else if (sortByValue === 'duration-negative') {
         return a.duration - b.duration;
-      }else if (sortByValue === 'cadence') {
-        return (b.type === 'running' ? b.cadence : 0) - (a.type === 'running' ? a.cadence : 0);
-      } else if(sortByValue === 'cadence-negative'){
-        return (a.type === 'running' ? a.cadence : 0) - (b.type === 'running' ? b.cadence : 0);
+      } else if (sortByValue === 'cadence') {
+        return (
+          (b.type === 'running' ? b.cadence : 0) -
+          (a.type === 'running' ? a.cadence : 0)
+        );
+      } else if (sortByValue === 'cadence-negative') {
+        return (
+          (a.type === 'running' ? a.cadence : 0) -
+          (b.type === 'running' ? b.cadence : 0)
+        );
       } else if (sortByValue === 'elevation') {
-        return (b.type === 'cycling' ? b.elevationGain : 0) - (a.type === 'cycling' ? a.elevationGain : 0);
-      }else if(sortByValue === 'elevation-negative'){
-        return (a.type === 'cycling' ? a.elevationGain : 0) - (b.type === 'cycling' ? b.elevationGain : 0);
-      } 
+        return (
+          (b.type === 'cycling' ? b.elevationGain : 0) -
+          (a.type === 'cycling' ? a.elevationGain : 0)
+        );
+      } else if (sortByValue === 'elevation-negative') {
+        return (
+          (a.type === 'cycling' ? a.elevationGain : 0) -
+          (b.type === 'cycling' ? b.elevationGain : 0)
+        );
+      }
     });
 
     this.#markers.forEach(marker => marker.remove());
-    document.querySelectorAll('.workout').forEach(workoutEl => workoutEl.remove());
-    
+    document
+      .querySelectorAll('.workout')
+      .forEach(workoutEl => workoutEl.remove());
+
     this.#workouts.forEach(work => {
       this._renderWorkoutMarker(work);
       this._renderWorkout(work);
     });
-  
-    this._setLocalStorage();
 
+    this._setLocalStorage();
   }
 
- 
   _getPosition() {
     if (navigator.geolocation)
       navigator.geolocation.getCurrentPosition(
         this._loadMap.bind(this),
         function () {
-          alert('Could not get your position');
+          overlay.style.display = 'block';
+          warning.style.display = 'block';
+          let html = `
+            <h2>Could not get your position</h2>
+            <p>Please allow us to use your position</p>
+            `;
+          warning.innerHTML = html;
         }
       );
   }
@@ -160,23 +210,79 @@ class App {
     const coords = [latitude, longitude];
     this.#map = L.map('map').setView(coords, this.#mapZoomLevel);
     L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(this.#map);
     this.#map.on('click', this._showForm.bind(this));
+    this.#map.on('click', this._handleMapClick.bind(this));
     this.#workouts.forEach(work => {
       this._renderWorkoutMarker(work);
     });
+    this._showUserLocation(coords);
     this._showTools();
+  }
+
+  _handleMapClick(mapE) {
+    if (!this.#routingControl) {
+      this.#routingControl = L.Routing.control({
+        waypoints: [
+          L.latLng(this.#map.getCenter()),
+          L.latLng(mapE.latlng)
+        ],
+        createMarker: () => null,
+        routeWhileDragging: true
+      }).addTo(this.#map);
+    } else {
+      this.#routingControl.setWaypoints([
+        L.latLng(this.#map.getCenter()),
+        L.latLng(mapE.latlng)
+      ]);
+    }
+  }
+  _showUserLocation(coords) {
+    if (this.#userMarker) {
+      this.#map.removeLayer(this.#userMarker);
+      clearInterval(this.#blinkInterval); // Önceki yanıp sönme aralığını temizle
+    }
+
+    this.#userMarker = L.marker(coords, {
+      icon: L.divIcon({
+        className: 'user-location-icon',
+        html: '<div class="user-location"></div>',
+        iconSize: [20, 20],
+      }),
+    }).addTo(this.#map);
+
+    // Yanıp sönme efekti
+    let visible = true;
+    this.#blinkInterval = setInterval(() => {
+      visible = !visible;
+      this.#userMarker.getElement().style.opacity = visible ? '1' : '0';
+    }, 1000); // 1 saniyede bir yanıp söner
   }
 
   _showForm(mapE) {
     this.#mapEvent = mapE;
     form.classList.remove('hidden');
-    inputDistance.focus();
+    if (inputType.value === 'running') {
+      inputCadence.closest('.form__row').classList.remove('form__row--hidden');
+
+      inputElevation.closest('.form__row').classList.add('form__row--hidden');
+    } else if (inputType.value === 'cycling') {
+      inputElevation
+        .closest('.form__row')
+        .classList.remove('form__row--hidden');
+
+      inputCadence.closest('.form__row').classList.add('form__row--hidden');
+    }
   }
 
   _hideForm() {
-    inputDistance.value = inputDuration.value = inputCadence.value = inputElevation.value = '';
+    inputDistance.value =
+      inputDuration.value =
+      inputCadence.value =
+      inputElevation.value =
+        '';
     form.style.display = 'none';
     form.classList.add('hidden');
     setTimeout(() => (form.style.display = 'grid'), 1000);
@@ -189,7 +295,8 @@ class App {
   }
 
   _newWorkout(e) {
-    const validInputs = (...inputs) => inputs.every(inp => Number.isFinite(inp));
+    const validInputs = (...inputs) =>
+      inputs.every(inp => Number.isFinite(inp));
     const allPositive = (...inputs) => inputs.every(inp => inp > 0);
 
     e.preventDefault();
@@ -201,16 +308,49 @@ class App {
 
     if (type === 'running') {
       const cadence = +inputCadence.value;
-      if (!validInputs(distance, duration, cadence) || !allPositive(distance, duration, cadence))
-        return alert('Inputs have to be positive numbers!');
-      workout = new Running([lat, lng], distance, duration, cadence);
+      if (
+        !validInputs(distance, duration, cadence) ||
+        !allPositive(distance, duration, cadence)
+      ) {
+        overlay.style.display = 'block';
+        warning.style.display = 'block';
+        let html = `
+          <h2>Inputs have to be positive numbers!</h2>
+          <p>Please check your inputs</p>
+
+          `;
+        warning.innerHTML = html;
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          warning.style.display = 'none';
+        }, 1000);
+        return;
+      } else {
+        workout = new Running([lat, lng], distance, duration, cadence);
+      }
     }
 
     if (type === 'cycling') {
       const elevation = +inputElevation.value;
-      if (!validInputs(distance, duration, elevation) || !allPositive(distance, duration))
-        return alert('Inputs have to be positive numbers!');
-      workout = new Cycling([lat, lng], distance, duration, elevation);
+      if (
+        !validInputs(distance, duration, elevation) ||
+        !allPositive(distance, duration)
+      ) {
+        overlay.style.display = 'block';
+        warning.style.display = 'block';
+        let html = `
+          <h2>Inputs have to be positive numbers!</h2>
+          <p>Please check your inputs</p>`;
+
+        warning.innerHTML = html;
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          warning.style.display = 'none';
+        }, 1000);
+        return;
+      } else {
+        workout = new Cycling([lat, lng], distance, duration, elevation);
+      }
     }
 
     this.#workouts.push(workout);
@@ -246,7 +386,7 @@ class App {
       .openPopup();
 
     // İşareti sakla
-    this.#markers.set(workout.id, marker);
+    this.#markers.set(workout.id, L.marker(workout.coords));
   }
 
   _renderWorkout(workout) {
@@ -256,7 +396,9 @@ class App {
         <button class="workout__btn workout__btn--edit"><i class="fa-solid fa-pen-to-square"></i></button>
         <button class="workout__btn workout__btn--delete"><i class="fa-solid fa-trash"></i></button>
         <div class="workout__details">
-          <span class="workout__icon">${workout.type === 'running' ? '🏃‍♂️' : '🚴‍♀️'}</span>
+          <span class="workout__icon">${
+            workout.type === 'running' ? '🏃‍♂️' : '🚴‍♀️'
+          }</span>
           <span class="workout__value">${workout.distance}</span>
           <span class="workout__unit">km</span>
         </div>
@@ -265,7 +407,9 @@ class App {
           <span class="workout__value">${workout.duration}</span>
           <span class="workout__unit">min</span>
         </div>
-        ${workout.type === 'running' ? `
+        ${
+          workout.type === 'running'
+            ? `
           <div class="workout__details">
             <span class="workout__icon">⚡️</span>
             <span class="workout__value">${workout.pace.toFixed(1)}</span>
@@ -276,7 +420,9 @@ class App {
             <span class="workout__value">${workout.cadence}</span>
             <span class="workout__unit">spm</span>
           </div>
-        ` : workout.type === 'cycling' ? `
+        `
+            : workout.type === 'cycling'
+            ? `
           <div class="workout__details">
             <span class="workout__icon">⚡️</span>
             <span class="workout__value">${workout.speed.toFixed(1)}</span>
@@ -287,18 +433,24 @@ class App {
             <span class="workout__value">${workout.elevationGain}</span>
             <span class="workout__unit">m</span>
           </div>
-        ` : ''}
+        `
+            : ''
+        }
       </li>
     `;
 
     form.insertAdjacentHTML('afterend', html);
 
-    document.querySelectorAll('.workout__btn--edit').forEach(btn =>
-      btn.addEventListener('click', this._editWorkout.bind(this))
-    );
-    document.querySelectorAll('.workout__btn--delete').forEach(btn =>
-      btn.addEventListener('click', this._deleteWorkout.bind(this))
-    );
+    document
+      .querySelectorAll('.workout__btn--edit')
+      .forEach(btn =>
+        btn.addEventListener('click', this._editWorkout.bind(this))
+      );
+    document
+      .querySelectorAll('.workout__btn--delete')
+      .forEach(btn =>
+        btn.addEventListener('click', this._deleteWorkout.bind(this))
+      );
 
     this._showTools();
   }
@@ -309,7 +461,7 @@ class App {
 
     const workoutId = workoutEl.dataset.id;
     this.#workouts = this.#workouts.filter(workout => workout.id !== workoutId);
-    
+
     // Harita üzerindeki işareti kaldır
     if (this.#markers.has(workoutId)) {
       this.#map.removeLayer(this.#markers.get(workoutId));
@@ -322,19 +474,37 @@ class App {
   }
 
   _deleteAllWorkouts() {
-    if (!confirm('Are you sure you want to delete all workouts?')) return;
-    this.#markers.forEach(marker => marker.remove());
-    document.querySelectorAll('.workout').forEach(workoutEl => workoutEl.remove());
+    overlay.style.display = 'block';
+    warning.style.display = 'block';
+    let html = `<p>Are you sure you want to delete all workouts?</p>
+    <button class="confirm__btn">Yes</button>
+    <button class="cancel__btn">No</button>`;
+    warning.innerHTML = html;
+    let confirmBtn = document.querySelector('.confirm__btn');
+    let cancelBtn = document.querySelector('.cancel__btn');
+    confirmBtn.addEventListener('click',  () => {
+        console.log(this)
+        overlay.style.display = 'none';
+        warning.style.display = 'none';
+        this.#workouts = [];
+        this.#markers.forEach(marker => marker.remove());
+        this.#markers.clear(); 
+        if (this.#routingControl) {
+            this.#map.removeControl(this.#routingControl);
+            this.#routingControl = null;
+          }
+        document
+          .querySelectorAll('.workout')
+          .forEach(workoutEl => workoutEl.remove());
+        this._setLocalStorage();
+        this._showTools();
+    });
+    cancelBtn.addEventListener('click', () => {
+        overlay.style.display = 'none';
+        warning.style.display = 'none';
+    })
     
-    // Clear workouts array
-    this.#workouts = [];
-  
-    // Hide tools
-    this._showTools();
-  
-    // Update local storage
-    this._setLocalStorage();
- 
+    
   }
   _editWorkout(e) {
     const workoutEl = e.target.closest('.workout');
@@ -355,17 +525,23 @@ class App {
       inputCadence.value = '';
     }
 
-    this._showForm({ latlng: { lat: workout.coords[0], lng: workout.coords[1] } });
+    this._showForm({
+      latlng: { lat: workout.coords[0], lng: workout.coords[1] },
+    });
 
     // Silme işlemini çağır
-    this._deleteWorkout({ target: workoutEl.querySelector('.workout__btn--delete') });
+    this._deleteWorkout({
+      target: workoutEl.querySelector('.workout__btn--delete'),
+    });
   }
 
   _moveToPopup(e) {
     const workoutEl = e.target.closest('.workout');
     if (!workoutEl) return;
 
-    const workout = this.#workouts.find(work => work.id === workoutEl.dataset.id);
+    const workout = this.#workouts.find(
+      work => work.id === workoutEl.dataset.id
+    );
     if (!workout) return;
 
     this.#map.setView(workout.coords, this.#mapZoomLevel, {
@@ -375,10 +551,10 @@ class App {
   }
 
   _showTools() {
-    if(this.#workouts.length > 0){
-        tools.classList.remove('tools--hidden');
+    if (this.#workouts.length > 0) {
+      tools.classList.remove('tools--hidden');
     } else {
-        tools.classList.add('tools--hidden');
+      tools.classList.add('tools--hidden');
     }
   }
 

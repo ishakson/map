@@ -10,7 +10,12 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.2.0/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+<script defer src="https://unpkg.com/leaflet@1.2.0/dist/leaflet.js"></script>
+<script defer src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
     <link rel="stylesheet" href="style.css" />
 
     <link
@@ -29,12 +34,17 @@
       src="https://kit.fontawesome.com/793ffa5687.js"
       crossorigin="anonymous"
     ></script>
+    <!-- Leaflet CSS -->
+
+
 
     <!-- <script defer src="other.js"></script> -->
     <script defer src="script.js"></script>
     <title>mapty // Map your workouts</title>
   </head>
   <body>
+    <div class="overlay"></div>
+    <div class="warning"></div>
     <div class="sidebar">
       <img src="logo.png" alt="Logo" class="logo" />
       <div class="tools tools--hidden">
