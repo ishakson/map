@@ -25,6 +25,10 @@
       integrity="sha512-gZwIG9x3wUXg2hdXF6+rVkLF/0Vi9U8D2Ntg4Ga5I5BZpVkVxlJWbSQtXPSiUTtC0TjtGOmxa1AJPuV0CPthew=="
       crossorigin=""
     ></script>
+    <script
+      src="https://kit.fontawesome.com/793ffa5687.js"
+      crossorigin="anonymous"
+    ></script>
 
     <!-- <script defer src="other.js"></script> -->
     <script defer src="script.js"></script>
@@ -33,6 +37,36 @@
   <body>
     <div class="sidebar">
       <img src="logo.png" alt="Logo" class="logo" />
+      <div class="tools tools--hidden">
+        <button class="overview tools__btn">Overview</button>
+        <span>
+          <label for="show-by">Show by</label>
+          <select name="show-by" id="show-by">
+            <option value="all">All</option>
+            <option value="running">Running</option>
+            <option value="cycling">Cycling</option>
+          </select>
+        </span>
+        <span>
+          <label for=" sort-by">Sort by</label>
+          <select name="sort-by" id="sort-by">
+            <option value="all">All</option>
+
+            <option value="Distance-negative">Distance Negative</option>
+            <option value="Distance">Distance</option>
+            <option value="Duration-negative">Duration Negative</option>
+
+            <option value="Duration">Duration</option>
+            <option value="Cadence-negative">Cadence Negative</option>
+
+            <option value="Cadence">Cadence</option>
+            <option value="Elevation-negative">Elevation Negative</option>
+
+            <option value="Elevation">Elevation</option>
+          </select>
+        </span>
+        <button class="delete__all tools__btn">Delete All</button>
+      </div>
 
       <ul class="workouts">
         <form class="form hidden">
