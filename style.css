@@ -219,6 +219,7 @@ a:visited {
 .form__row {
   display: flex;
   align-items: center;
+  overflow: hidden;
 }
 
 .form__row--hidden {
@@ -249,6 +250,18 @@ a:visited {
 
 .form__btn {
   display: none;
+}
+
+.workout__from {
+  margin-right: 0.3rem;
+  font-size: 1.1rem;
+  color: var(--color-light--1);
+}
+
+.workout__to{
+  margin-left: 0.3rem;
+  font-size: 1.1rem;
+  color: var(--color-light--1);
 }
 
 

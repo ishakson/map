@@ -1,15 +1,17 @@
 'use strict';
 
-
 class Workout {
   date = new Date();
   id = (Date.now() + '').slice(-10);
   clicks = 0;
 
-  constructor(coords, distance, duration) {
+  constructor(coords, distance, duration, from, to) {
     this.coords = coords; // [lat, lng]
     this.distance = distance; // in km
     this.duration = duration; // in min
+    this.from = from;
+    this.to = to;
+    
   }
 
   _setDescription() {
@@ -40,9 +42,10 @@ class Workout {
 class Running extends Workout {
   type = 'running';
 
-  constructor(coords, distance, duration, cadence) {
-    super(coords, distance, duration);
+  constructor(coords, distance, duration, from, to, cadence) {
+    super(coords, distance, duration, from, to);
     this.cadence = cadence;
+
     this.calcPace();
     this._setDescription();
   }
@@ -56,8 +59,8 @@ class Running extends Workout {
 class Cycling extends Workout {
   type = 'cycling';
 
-  constructor(coords, distance, duration, elevationGain) {
-    super(coords, distance, duration);
+  constructor(coords, distance, duration, from, to, elevationGain) {
+    super(coords, distance, duration, from, to);
     this.elevationGain = elevationGain;
     this.calcSpeed();
     this._setDescription();
@@ -83,19 +86,22 @@ const showBy = document.querySelector('#show-by');
 const overviewBtn = document.querySelector('.overview');
 const overlay = document.querySelector('.overlay');
 const warning = document.querySelector('.warning');
+const fromInput = document.querySelector('.form__input--from');
+const toInput = document.querySelector('.form__input--to');
+const weatherDiv = document.querySelector('.weather');
 
 class App {
+  
+  
   #map;
   #mapZoomLevel = 13;
   #mapEvent;
   #workouts = [];
   #markers = new Map();
-  #userMarker; 
+  #userMarker;
   #blinkInterval;
   #routingControl;
   #userCoords;
-
-  
   
 
   constructor() {
@@ -110,6 +116,7 @@ class App {
     overviewBtn.addEventListener('click', this._showOverview.bind(this));
     this.#routingControl = null;
     
+
     this._showTools();
   }
 
@@ -195,7 +202,8 @@ class App {
   _getPosition() {
     if (navigator.geolocation)
       navigator.geolocation.getCurrentPosition(
-        this._loadMap.bind(this),
+        this._loadMap.bind(this)
+        ,
         function () {
           overlay.style.display = 'block';
           warning.style.display = 'block';
@@ -219,7 +227,9 @@ class App {
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(this.#map);
     this.#map.on('click', this._showForm.bind(this));
-    this.#map.on("click", this._showRoute.bind(this));
+    this.#map.on('click', this._showRoute.bind(this));
+   
+
     this.#workouts.forEach(work => {
       this._renderWorkoutMarker(work);
     });
@@ -227,12 +237,12 @@ class App {
     this._showTools();
   }
 
-  _showRoute(e) {
+   _showRoute(e) {
     if (!this.#map) return;
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        position => {
           const { latitude, longitude } = position.coords;
           const currentLatLng = L.latLng(latitude, longitude);
           const destinationLatLng = L.latLng(e.latlng.lat, e.latlng.lng);
@@ -240,30 +250,119 @@ class App {
           if (this.#routingControl) {
             this.#map.removeControl(this.#routingControl);
           }
-         
-        
+
           this.#routingControl = L.Routing.control({
             waypoints: [currentLatLng, destinationLatLng],
             routeWhileDragging: true,
-            
           }).addTo(this.#map);
-
+          this._updateForm(currentLatLng, destinationLatLng);
+          this._getWeather(destinationLatLng.lat, destinationLatLng.lng);
          
         },
-        (error) => {
-          console.error('Error getting current location:', error);
-          alert('Unable to retrieve your location. Please allow location access.');
+        error => {
+          overlay.style.display = 'block';
+          warning.style.display = 'block';
+          let html = `
+            <h2>Could not get your position</h2>
+            <p>Please allow us to use your position</p>
+            `;
+          warning.innerHTML = html;
+          setTimeout(() => {
+            overlay.style.display = 'none';
+            warning.style.display = 'none';
+          }, 1000);
         }
       );
     } else {
-      alert('Geolocation is not supported by this browser.');
+      overlay.style.display = 'block';
+      warning.style.display = 'block';
+      let html = `
+        <h2>Could not get your position</h2>
+        <p>Please allow us to use your position</p>
+        `;
+      warning.innerHTML = html;
+      setTimeout(() => {
+        overlay.style.display = 'none';
+        warning.style.display = 'none';
+      }, 1000);
+    }
+  }
+  async _getWeather(lat, lon) {
+    const apiKey = '14dd046fc081b8f462c1654591d21592';
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+  
+    try {
+      
+      const response = await fetch(url);
+  
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+  
+      
+      const data = await response.json();
+  
+      weatherDiv.innerHTML = `
+        
+        <p>Temperature: ${data.main.temp}°C</p>
+        
+      `;
+  
+      
+    } catch (error) {
+      console.error('Error fetching weather data:', error);
+      throw error; 
     }
   }
 
+  async _updateForm(currentLatLng, destinationLatLng) {
+    // Calculate distance between user location and clicked point
+    const distanceInMeters = currentLatLng.distanceTo(destinationLatLng);
+    const distanceInKm = distanceInMeters / 1000;
+    fromInput.value = await this._getAddress(currentLatLng);
+
+    toInput.value = await this._getAddress(destinationLatLng);
+    inputDistance.value = distanceInKm.toFixed(2);
+
+    const estimatedSpeed = 5;
+    const estimatedDurationInHours = distanceInKm / estimatedSpeed;
+    const estimatedDurationInMinutes = estimatedDurationInHours * 60;
+
+    form.querySelector('.form__input--duration').value =
+      estimatedDurationInMinutes.toFixed(0);
+
+    if (inputType.value === 'running') {
+      inputCadence.value = 180;
+      inputElevation.value = '';
+    } else if (inputType.value === 'cycling') {
+      inputElevation.value = 100;
+      inputCadence.value = '';
+    }
+  }
+
+  async _getAddress(coords) {
+    const { lat, lng } = coords;
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      return data.display_name;
+    } catch (error) {
+      console.error('Error:', error);
+      return null;
+    }
+  }
   _showUserLocation(coords) {
     if (this.#userMarker) {
       this.#map.removeLayer(this.#userMarker);
-      clearInterval(this.#blinkInterval); 
+      clearInterval(this.#blinkInterval);
     }
 
     this.#userMarker = L.marker(coords, {
@@ -324,6 +423,12 @@ class App {
     const type = inputType.value;
     const distance = +inputDistance.value;
     const duration = +inputDuration.value;
+    const from = fromInput.value.split(', ')[0];
+
+    const to = toInput.value.split(', ')[0];
+
+
+    
     const { lat, lng } = this.#mapEvent.latlng;
     let workout;
 
@@ -347,7 +452,14 @@ class App {
         }, 1000);
         return;
       } else {
-        workout = new Running([lat, lng], distance, duration, cadence);
+        workout = new Running(
+          [lat, lng],
+          distance,
+          duration,
+          from,
+          to,
+          cadence
+        );
       }
     }
 
@@ -370,7 +482,14 @@ class App {
         }, 1000);
         return;
       } else {
-        workout = new Cycling([lat, lng], distance, duration, elevation);
+        workout = new Cycling(
+          [lat, lng],
+          distance,
+          duration,
+          from,
+          to,
+          elevation
+        );
       }
     }
 
@@ -429,6 +548,7 @@ class App {
           <span class="workout__value">${workout.duration}</span>
           <span class="workout__unit">min</span>
         </div>
+        
         ${
           workout.type === 'running'
             ? `
@@ -442,6 +562,10 @@ class App {
             <span class="workout__value">${workout.cadence}</span>
             <span class="workout__unit">spm</span>
           </div>
+          <div class="workout__details">
+          <span class="workout__from">${workout.from}</span>
+          <span class="workout__to">${workout.to}</span>
+        </div>
         `
             : workout.type === 'cycling'
             ? `
@@ -455,12 +579,17 @@ class App {
             <span class="workout__value">${workout.elevationGain}</span>
             <span class="workout__unit">m</span>
           </div>
+          <div class="workout__details">
+            <span class="workout__from">${workout.from}</span>
+            <span class="workout__to">${workout.to}</span>
+           
+            
+          </div>
         `
             : ''
         }
       </li>
     `;
-
     form.insertAdjacentHTML('afterend', html);
 
     document
@@ -484,11 +613,9 @@ class App {
     const workoutId = workoutEl.dataset.id;
     this.#workouts = this.#workouts.filter(workout => workout.id !== workoutId);
 
-    // Harita üzerindeki işareti kaldır
-    if (this.#markers.has(workoutId)) {
-      this.#map.removeLayer(this.#markers.get(workoutId));
-      this.#markers.delete(workoutId);
-    }
+    this.#map.removeLayer(this.#markers.get(workoutId));
+
+    this.#markers.delete(workoutId);
 
     workoutEl.remove();
     this._setLocalStorage();
@@ -504,27 +631,26 @@ class App {
     warning.innerHTML = html;
     let confirmBtn = document.querySelector('.confirm__btn');
     let cancelBtn = document.querySelector('.cancel__btn');
-    confirmBtn.addEventListener('click',  () => {
-        console.log(this)
-        overlay.style.display = 'none';
-        warning.style.display = 'none';
-        this.#workouts = [];
-        this.#markers.forEach(marker => marker.remove());
-        this.#markers.clear(); 
-       
-        document
-          .querySelectorAll('.workout')
-          .forEach(workoutEl => workoutEl.remove());
-        this._setLocalStorage();
-        this._showTools();
+    confirmBtn.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      warning.style.display = 'none';
+      this.#workouts = [];
+
+      this.#markers.forEach(marker => marker.remove());
+      this.#markers.clear();
+
+      document
+        .querySelectorAll('.workout')
+        .forEach(workoutEl => workoutEl.remove());
+      this._setLocalStorage();
+      this._showTools();
     });
     cancelBtn.addEventListener('click', () => {
-        overlay.style.display = 'none';
-        warning.style.display = 'none';
-    })
-    
-    
+      overlay.style.display = 'none';
+      warning.style.display = 'none';
+    });
   }
+
   _editWorkout(e) {
     const workoutEl = e.target.closest('.workout');
     if (!workoutEl) return;
@@ -572,17 +698,15 @@ class App {
     this.#routingControl = L.Routing.control({
       waypoints: [
         L.latLng(this.#userCoords[0], this.#userCoords[1]), // Kullanıcı konumu
-        workoutLatLng // Workout konumu
+        workoutLatLng, // Workout konumu
       ],
       routeWhileDragging: true,
     }).addTo(this.#map);
-
 
     this.#map.setView(workoutLatLng, this.#mapZoomLevel, {
       animate: true,
       pan: { duration: 1 },
     });
-  
   }
 
   _showTools() {
