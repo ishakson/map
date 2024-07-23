@@ -93,6 +93,9 @@ class App {
   #userMarker; 
   #blinkInterval;
   #routingControl;
+  #userCoords;
+
+  
   
 
   constructor() {
@@ -105,7 +108,8 @@ class App {
     sortBy.addEventListener('change', this._sortWorkouts.bind(this));
     showBy.addEventListener('change', this._showWorkouts.bind(this));
     overviewBtn.addEventListener('click', this._showOverview.bind(this));
-
+    this.#routingControl = null;
+    
     this._showTools();
   }
 
@@ -208,13 +212,14 @@ class App {
     const { latitude } = position.coords;
     const { longitude } = position.coords;
     const coords = [latitude, longitude];
+    this.#userCoords = coords;
     this.#map = L.map('map').setView(coords, this.#mapZoomLevel);
     L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(this.#map);
     this.#map.on('click', this._showForm.bind(this));
-    this.#map.on('click', this._handleMapClick.bind(this));
+    this.#map.on("click", this._showRoute.bind(this));
     this.#workouts.forEach(work => {
       this._renderWorkoutMarker(work);
     });
@@ -222,27 +227,43 @@ class App {
     this._showTools();
   }
 
-  _handleMapClick(mapE) {
-    if (!this.#routingControl) {
-      this.#routingControl = L.Routing.control({
-        waypoints: [
-          L.latLng(this.#map.getCenter()),
-          L.latLng(mapE.latlng)
-        ],
-        createMarker: () => null,
-        routeWhileDragging: true
-      }).addTo(this.#map);
+  _showRoute(e) {
+    if (!this.#map) return;
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const currentLatLng = L.latLng(latitude, longitude);
+          const destinationLatLng = L.latLng(e.latlng.lat, e.latlng.lng);
+
+          if (this.#routingControl) {
+            this.#map.removeControl(this.#routingControl);
+          }
+         
+        
+          this.#routingControl = L.Routing.control({
+            waypoints: [currentLatLng, destinationLatLng],
+            routeWhileDragging: true,
+            
+          }).addTo(this.#map);
+
+         
+        },
+        (error) => {
+          console.error('Error getting current location:', error);
+          alert('Unable to retrieve your location. Please allow location access.');
+        }
+      );
     } else {
-      this.#routingControl.setWaypoints([
-        L.latLng(this.#map.getCenter()),
-        L.latLng(mapE.latlng)
-      ]);
+      alert('Geolocation is not supported by this browser.');
     }
   }
+
   _showUserLocation(coords) {
     if (this.#userMarker) {
       this.#map.removeLayer(this.#userMarker);
-      clearInterval(this.#blinkInterval); // Önceki yanıp sönme aralığını temizle
+      clearInterval(this.#blinkInterval); 
     }
 
     this.#userMarker = L.marker(coords, {
@@ -258,7 +279,7 @@ class App {
     this.#blinkInterval = setInterval(() => {
       visible = !visible;
       this.#userMarker.getElement().style.opacity = visible ? '1' : '0';
-    }, 1000); // 1 saniyede bir yanıp söner
+    }, 1000);
   }
 
   _showForm(mapE) {
@@ -385,6 +406,7 @@ class App {
       )
       .openPopup();
 
+    marker.on('click', this._showRoute.bind(this));
     // İşareti sakla
     this.#markers.set(workout.id, L.marker(workout.coords));
   }
@@ -489,10 +511,7 @@ class App {
         this.#workouts = [];
         this.#markers.forEach(marker => marker.remove());
         this.#markers.clear(); 
-        if (this.#routingControl) {
-            this.#map.removeControl(this.#routingControl);
-            this.#routingControl = null;
-          }
+       
         document
           .querySelectorAll('.workout')
           .forEach(workoutEl => workoutEl.remove());
@@ -544,10 +563,26 @@ class App {
     );
     if (!workout) return;
 
-    this.#map.setView(workout.coords, this.#mapZoomLevel, {
+    if (this.#routingControl) {
+      this.#map.removeControl(this.#routingControl);
+    }
+
+    // Yeni yönlendirme kontrolü oluştur
+    const workoutLatLng = L.latLng(workout.coords[0], workout.coords[1]);
+    this.#routingControl = L.Routing.control({
+      waypoints: [
+        L.latLng(this.#userCoords[0], this.#userCoords[1]), // Kullanıcı konumu
+        workoutLatLng // Workout konumu
+      ],
+      routeWhileDragging: true,
+    }).addTo(this.#map);
+
+
+    this.#map.setView(workoutLatLng, this.#mapZoomLevel, {
       animate: true,
       pan: { duration: 1 },
     });
+  
   }
 
   _showTools() {

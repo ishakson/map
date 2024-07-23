@@ -371,3 +371,11 @@ a:visited {
   background-color: blue;
   border-radius: 50%; 
 }
+
+.leaflet-routing-instructions {
+  display: none !important;
+}
+
+.leaflet-routing-alt {
+  display: none !important;
+}
